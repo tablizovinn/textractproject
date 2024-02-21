@@ -1,5 +1,7 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Amazon;
 using Amazon.Textract;
@@ -23,9 +25,7 @@ namespace armanproject
             var bucketName = "armansample";
             var documentKey = "example8.pdf";
 
-           var jobId = await StartDocumentTextDetectionAsync(textractClient, bucketName, documentKey);
-
-            Console.WriteLine($"Text detection job started with ID: {jobId}");
+            var jobId = await StartDocumentTextDetectionAsync(textractClient, bucketName, documentKey);
 
             // Wait for the job to complete
             Console.WriteLine("Waiting for job to complete...");
@@ -34,10 +34,11 @@ namespace armanproject
             if (jobStatus == "SUCCEEDED")
             {
                 // Get the results of the text detection job
-                var extractedText = await GetExtractedTextAsync(textractClient, jobId);
+                var extractedContent = await GetExtractedContentAsync(textractClient, jobId);
 
-                // Output the extracted content
-                extractedText.Output();
+                // Serialize the extracted content to JSON
+                var json = JsonSerializer.Serialize(extractedContent);
+                Console.WriteLine(json);
             }
             else
             {
@@ -88,7 +89,7 @@ namespace armanproject
             return jobStatus;
         }
 
-        static async Task<ExtractedContent> GetExtractedTextAsync(AmazonTextractClient textractClient, string jobId)
+        static async Task<ExtractedContent> GetExtractedContentAsync(AmazonTextractClient textractClient, string jobId)
         {
             var response = await textractClient.GetDocumentTextDetectionAsync(new GetDocumentTextDetectionRequest
             {
@@ -96,107 +97,39 @@ namespace armanproject
             });
 
             // Process the blocks and separate them into text, tables, and forms
-            var textBlocks = new List<Block>();
-            var tableBlocks = new List<Block>();
-            var formBlocks = new List<Block>();
+            var textBlocks = new List<string>();
+            var tableBlocks = new List<string>();
+            var formBlocks = new List<string>();
 
             foreach (var item in response.Blocks)
             {
                 switch (item.BlockType)
                 {
                     case "LINE":
-                        textBlocks.Add(item);
+                        textBlocks.Add(item.Text);
                         break;
                     case "TABLE":
-                        tableBlocks.Add(item);
+                        tableBlocks.Add(item.Text);
                         break;
                     case "KEY_VALUE_SET":
-                        formBlocks.Add(item);
+                        formBlocks.Add(item.Text);
                         break;
                 }
             }
 
             return new ExtractedContent
             {
-                Text = new Text(textBlocks),
-                Tables = new Tables(tableBlocks),
-                Forms = new Forms(formBlocks)
+                Text = textBlocks,
+                Tables = tableBlocks,
+                Forms = formBlocks
             };
         }
     }
 
     class ExtractedContent
     {
-        public Text Text { get; set; }
-        public Tables Tables { get; set; }
-        public Forms Forms { get; set; }
-
-        public void Output()
-        {
-            Console.WriteLine("Text:");
-            Text.Output();
-
-            Console.WriteLine("\nTables:");
-            Tables.Output();
-
-            Console.WriteLine("\nForms:");
-            Forms.Output();
-        }
-    }
-
-    class Text
-    {
-        private List<Block> _textBlocks;
-
-        public Text(List<Block> textBlocks)
-        {
-            _textBlocks = textBlocks;
-        }
-
-        public void Output()
-        {
-            foreach (var block in _textBlocks)
-            {
-                Console.WriteLine(block.Text);
-            }
-        }
-    }
-
-    class Tables
-    {
-        private List<Block> _tableBlocks;
-
-        public Tables(List<Block> tableBlocks)
-        {
-            _tableBlocks = tableBlocks;
-        }
-
-        public void Output()
-        {
-            foreach (var block in _tableBlocks)
-            {
-                Console.WriteLine("Table:");
-                Console.WriteLine(block.Text);
-            }
-        }
-    }
-
-    class Forms
-    {
-        private List<Block> _formBlocks;
-
-        public Forms(List<Block> formBlocks)
-        {
-            _formBlocks = formBlocks;
-        }
-
-        public void Output()
-        {
-            foreach (var block in _formBlocks)
-            {
-                Console.WriteLine("Form:");
-                Console.WriteLine(block.Text);
-            }
-        }
+        public List<string> Text { get; set; }
+        public List<string> Tables { get; set; }
+        public List<string> Forms { get; set; }
     }
 }
