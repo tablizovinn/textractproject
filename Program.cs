@@ -90,7 +90,7 @@ namespace armanproject
             return jobStatus;
         }
 
-        static async Task<ExtractedContent> GetExtractedContentAsync(AmazonTextractClient textractClient, string jobId)
+        static async Task<MainDocument> GetExtractedContentAsync(AmazonTextractClient textractClient, string jobId)
         {
             var response = await textractClient.GetDocumentTextDetectionAsync(new GetDocumentTextDetectionRequest
             {
@@ -130,7 +130,7 @@ namespace armanproject
                 }
             }
 
-            return new ExtractedContent
+            return new MainDocument
             {
                 Text = textBlocks,
                 Tables = tableBlocks,
@@ -159,41 +159,38 @@ namespace armanproject
         }
 
         static Form ExtractFormFromBlock(GetDocumentTextDetectionResponse response, Block formBlock)
-{
-    var form = new Form();
-    foreach (var relationship in formBlock.Relationships)
-    {
-        if (relationship.Type == "CHILD")
         {
-            foreach (var childId in relationship.Ids)
+            var form = new Form();
+            var fields = new Dictionary<string, object>();
+            foreach (var relationship in formBlock.Relationships)
             {
-                var childBlock = response.Blocks.FirstOrDefault(b => b.Id == childId);
-                if (childBlock != null && childBlock.BlockType == "KEY")
+                if (relationship.Type == "CHILD")
                 {
-                    // Find the value blocks related to this key
-                    var valueIds = relationship.Ids.Where(id => id != childId && response.Blocks.Any(b => b.Id == id && b.BlockType == "VALUE"));
-                    foreach (var valueId in valueIds)
+                    foreach (var childId in relationship.Ids)
                     {
-                        var valueBlock = response.Blocks.FirstOrDefault(b => b.Id == valueId);
-                        if (valueBlock != null)
+                        var childBlock = response.Blocks.FirstOrDefault(b => b.Id == childId);
+                        if (childBlock != null && childBlock.BlockType == "KEY")
                         {
-                            form.AddField(new FormField
+                            // Find the value blocks related to this key
+                            var valueIds = relationship.Ids.Where(id => id != childId && response.Blocks.Any(b => b.Id == id && b.BlockType == "VALUE"));
+                            foreach (var valueId in valueIds)
                             {
-                                Key = new ContentBlock { Confidence = childBlock.Confidence, Text = childBlock.Text },
-                                Value = new ContentBlock { Confidence = valueBlock.Confidence, Text = valueBlock.Text }
-                            });
+                                var valueBlock = response.Blocks.FirstOrDefault(b => b.Id == valueId);
+                                if (valueBlock != null)
+                                {
+                                    fields.Add(childBlock.Text, valueBlock.Text);
+                                }
+                            }
                         }
                     }
                 }
             }
+            form.Fields = fields;
+            return form;
         }
     }
-    return form;
-}
 
-    }
-
-    class ExtractedContent
+    class MainDocument
     {
         public List<ContentBlock> Text { get; set; }
         public List<Table> Tables { get; set; }
@@ -218,17 +215,6 @@ namespace armanproject
 
     class Form
     {
-        public List<FormField> Fields { get; } = new List<FormField>();
-
-        public void AddField(FormField field)
-        {
-            Fields.Add(field);
-        }
-    }
-
-    class FormField
-    {
-        public ContentBlock Key { get; set; }
-        public ContentBlock Value { get; set; }
+        public Dictionary<string, object> Fields { get; set; }
     }
 }
